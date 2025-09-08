@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from singer_sdk.authenticators import OAuthAuthenticator, SingletonMeta
+from typing_extensions import override
 
 
 # The SingletonMeta metaclass makes your streams reuse the same authenticator instance.
@@ -10,25 +11,19 @@ from singer_sdk.authenticators import OAuthAuthenticator, SingletonMeta
 class BingAdsAuthenticator(OAuthAuthenticator, metaclass=SingletonMeta):
     """Authenticator class for BingAds."""
 
+    @override
     @property
-    def oauth_request_body(self) -> dict:
-        """Define the OAuth request body for the AutomaticTestTap API.
-
-        Returns:
-            A dict with the request body
-        """
-        # TODO: Define the request body needed for the API.
+    def oauth_request_body(self):
         return {
-            "resource": "https://analysis.windows.net/powerbi/api",
-            "scope": self.oauth_scopes,
+            "grant_type": "refresh_token",
             "client_id": self.config["client_id"],
-            "username": self.config["username"],
-            "password": self.config["password"],
-            "grant_type": "password",
+            "client_secret": self.config["client_secret"],
+            "refresh_token": self.config["refresh_token"],
+            "scope": self.oauth_scopes,
         }
 
     @classmethod
-    def create_for_stream(cls, stream) -> BingAdsAuthenticator:  # noqa: ANN001
+    def create_for_stream(cls, stream) -> BingAdsAuthenticator:
         """Instantiate an authenticator for a specific Singer stream.
 
         Args:
@@ -39,6 +34,6 @@ class BingAdsAuthenticator(OAuthAuthenticator, metaclass=SingletonMeta):
         """
         return cls(
             stream=stream,
-            auth_endpoint="TODO: OAuth Endpoint URL",
-            oauth_scopes="TODO: OAuth Scopes",
+            auth_endpoint="https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            oauth_scopes="https://ads.microsoft.com/msads.manage",
         )

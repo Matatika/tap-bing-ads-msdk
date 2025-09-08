@@ -14,42 +14,31 @@ class TapBingAds(Tap):
 
     name = "tap-bing-ads"
 
-    # TODO: Update this section with the actual config values you expect:
     config_jsonschema = th.PropertiesList(
         th.Property(
-            "auth_token",
-            th.StringType(nullable=False),
-            required=True,
-            secret=True,  # Flag config as protected.
-            title="Auth Token",
-            description="The token to authenticate against the API service",
+            "client_id",
+            th.StringType,
+            title="Client ID",
+            description="App OAuth 2.0 client secret",
         ),
         th.Property(
-            "project_ids",
-            th.ArrayType(th.StringType(nullable=False), nullable=False),
-            required=True,
-            title="Project IDs",
-            description="Project IDs to replicate",
+            "client_secret",
+            th.StringType,
+            title="Client secret",
+            description="App OAuth 2.0 client secret",
+            secret=True,
+        ),
+        th.Property(
+            "refresh_token",
+            th.StringType,
+            title="Refresh secret",
+            description="App OAuth 2.0 refresh token",
+            secret=True,
         ),
         th.Property(
             "start_date",
             th.DateTimeType(nullable=True),
             description="The earliest record date to sync",
-        ),
-        th.Property(
-            "api_url",
-            th.StringType(nullable=False),
-            title="API URL",
-            default="https://api.mysample.com",
-            description="The url for the API service",
-        ),
-        th.Property(
-            "user_agent",
-            th.StringType(nullable=True),
-            description=(
-                "A custom User-Agent header to send with each request. Default is "
-                "'<tap_name>/<tap_version>'"
-            ),
         ),
     ).to_dict()
 
