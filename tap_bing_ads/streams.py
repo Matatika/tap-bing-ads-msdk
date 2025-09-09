@@ -20,6 +20,7 @@ BULK_DOWNLOAD_MAX_ATTEMPTS = 60
 class _AccountInfoStream(BingAdsStream):
     name = "_account_info"
     selected = False
+    primary_keys = ("Id",)
 
     schema = th.PropertiesList(
         th.Property("AccountLifeCycleStatus", th.StringType),
@@ -48,6 +49,7 @@ class AccountStream(BingAdsStream):
 
     parent_stream_type = _AccountInfoStream
     name = "accounts"
+    primary_keys = ("Id",)
 
     schema = th.PropertiesList(
         th.Property("AccountFinancialStatus", th.StringType),
@@ -123,6 +125,7 @@ class AccountStream(BingAdsStream):
 
 class _BulkStream(BingAdsStream):
     parent_stream_type = _AccountInfoStream
+    primary_keys = ("Id",)
 
     download_entity_name: str = ...
     entity_type_pattern: str = ...
