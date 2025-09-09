@@ -11,6 +11,10 @@ from tap_bing_ads import streams
 STREAM_TYPES = [
     streams._AccountInfoStream,  # noqa: SLF001
     streams.AccountStream,
+    streams.CampaignStream,
+    streams.AdGroupStream,
+    streams.AdStream,
+    streams.KeywordStream,
 ]
 
 
