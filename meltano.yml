@@ -33,6 +33,15 @@ plugins:
       description: App OAuth 2.0 refresh token
       sensitive: true
 
+    - name: developer_token
+      label: Developer Token
+      description: Microsoft Advertising developer token
+      sensitive: true
+
+    - name: customer_id
+      label: Customer ID
+      description: ID of customer to extract data for
+
     - name: start_date
       kind: date_iso8601
       label: Start Date

@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
+from typing_extensions import override
 
-# TODO: Import your custom stream types here:
 from tap_bing_ads import streams
+
+STREAM_TYPES = [
+    streams._AccountInfoStream,  # noqa: SLF001
+    streams.AccountStream,
+]
 
 
 class TapBingAds(Tap):
@@ -36,22 +41,28 @@ class TapBingAds(Tap):
             secret=True,
         ),
         th.Property(
+            "developer_token",
+            th.StringType,
+            title="Developer token",
+            description="Microsoft Advertising devleper token",
+            secret=True,
+        ),
+        th.Property(
+            "customer_id",
+            th.StringType,
+            title="Customer ID",
+            description="ID of customers to extract data for",
+        ),
+        th.Property(
             "start_date",
             th.DateTimeType(nullable=True),
             description="The earliest record date to sync",
         ),
     ).to_dict()
 
-    def discover_streams(self) -> list[streams.BingAdsStream]:
-        """Return a list of discovered streams.
-
-        Returns:
-            A list of discovered streams.
-        """
-        return [
-            streams.GroupsStream(self),
-            streams.UsersStream(self),
-        ]
+    @override
+    def discover_streams(self):
+        return [stream_cls(tap=self) for stream_cls in STREAM_TYPES]
 
 
 if __name__ == "__main__":

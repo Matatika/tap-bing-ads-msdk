@@ -5,21 +5,17 @@ from __future__ import annotations
 import decimal
 import typing as t
 from functools import cached_property
-from importlib import resources
 
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BaseAPIPaginator  # noqa: TC002
 from singer_sdk.streams import RESTStream
+from typing_extensions import override
 
 from tap_bing_ads.auth import BingAdsAuthenticator
 
 if t.TYPE_CHECKING:
     import requests
     from singer_sdk.helpers.types import Auth, Context
-
-
-# TODO: Delete this is if not using json files for schema definition
-SCHEMAS_DIR = resources.files(__package__) / "schemas"
 
 
 class BingAdsStream(RESTStream):
@@ -46,14 +42,13 @@ class BingAdsStream(RESTStream):
         """
         return BingAdsAuthenticator.create_for_stream(self)
 
+    @override
     @property
     def http_headers(self) -> dict:
-        """Return the http headers needed.
-
-        Returns:
-            A dictionary of HTTP headers.
-        """
-        return {}
+        return {
+            "Content-Type": "application/json",
+            "DeveloperToken": self.config["developer_token"],
+        }
 
     def get_new_paginator(self) -> BaseAPIPaginator | None:
         """Create a new pagination helper instance.
