@@ -5,8 +5,12 @@ from __future__ import annotations
 import csv
 import fnmatch
 import gzip
+import io
 import tempfile
 import time
+import zipfile
+from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
@@ -15,6 +19,7 @@ from typing_extensions import override
 from tap_bing_ads.client import BingAdsStream
 
 BULK_DOWNLOAD_MAX_ATTEMPTS = 60
+REPORT_DOWNLOAD_MAX_ATTEMPTS = 120
 
 
 class _AccountInfoStream(BingAdsStream):
@@ -150,11 +155,7 @@ class _BulkStream(BingAdsStream):
             self._download_bulk_file(account_id, bulk_file)
 
         with gzip.open(bulk_file, "rt", encoding="utf-8-sig") as f:
-            self.logger.info(
-                "Processing file '%s' for account: %s",
-                f.name,
-                context["account_id"],
-            )
+            self.logger.info("Processing file '%s' for account: %s", f.name, account_id)
 
             start = None
 
@@ -465,3 +466,530 @@ class KeywordStream(_BulkStream):
 
     download_entity_name = "Keywords"
     entity_type_pattern = "Keyword"
+
+
+class _DailyPerformanceReportStream(BingAdsStream):
+    parent_stream_type = _AccountInfoStream
+    primary_keys = ("TimePeriod",)
+    replication_key = "TimePeriod"
+    is_timestamp_replication_key = True
+
+    report_request_name: str = ...
+    column_restrictions: tuple[tuple[set[str], set[str]], ...] = ()
+
+    @override
+    def get_records(self, context):
+        account_id = context["account_id"]
+        report_file = (
+            Path(tempfile.gettempdir())
+            / f"{self.tap_name}_{self._tap.initialized_at}"
+            / f"{account_id}.zip"
+        )
+
+        start = self.get_starting_timestamp(context)
+        now = datetime.now(tz=timezone.utc)
+
+        response = self.requests_session.post(
+            "https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport/Submit",
+            json={
+                "ReportRequest": {
+                    "Aggregation": "Daily",
+                    "Columns": list(self.columns),
+                    "ExcludeReportFooter": True,
+                    "ExcludeReportHeader": True,
+                    "FormatVersion": "2.0",
+                    "Scope": {
+                        "AccountIds": [account_id],
+                    },
+                    "Time": {
+                        "CustomDateRangeEnd": {
+                            "Day": now.day,
+                            "Month": now.month,
+                            "Year": now.year,
+                        },
+                        "CustomDateRangeStart": {
+                            "Day": start.day,
+                            "Month": start.month,
+                            "Year": start.year,
+                        },
+                        "ReportTimeZone": "GreenwichMeanTimeDublinEdinburghLisbonLondon",  # noqa: E501
+                    },
+                    "Type": self.report_request_name,
+                }
+            },
+            headers=self.http_headers,
+            auth=self.authenticator,
+        )
+        response.raise_for_status()
+
+        request_id = response.json()["ReportRequestId"]
+        attempts = 0
+
+        while True:
+            response = self.requests_session.post(
+                "https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport/Poll",
+                json={"ReportRequestId": request_id},
+                headers=self.http_headers,
+                auth=self.authenticator,
+            )
+            response.raise_for_status()
+
+            request_status = response.json()["ReportRequestStatus"]
+            status = request_status["Status"]
+            attempts += 1
+
+            if status == "Pending":
+                if attempts >= REPORT_DOWNLOAD_MAX_ATTEMPTS:
+                    msg = (
+                        f"Download incomplete ({status}) after checking {attempts} "
+                        "time(s)"
+                    )
+                    raise RuntimeError(msg)
+
+                time.sleep(1)
+                continue
+
+            if status == "Success":
+                break
+
+            msg = f"Download failed ({status})"
+            raise RuntimeError(msg)
+
+        download_url = request_status["ReportDownloadUrl"]
+
+        if not download_url:
+            self.logger.info("No data available for account: %s", account_id)
+            return
+
+        report_file.parent.mkdir(exist_ok=True)
+
+        with (
+            self.requests_session.get(download_url, stream=True) as r,
+            report_file.open("wb") as f,
+        ):
+            r.raise_for_status()
+
+            for chunk in r.iter_content(chunk_size=8192):  # 8 KB chunks
+                if chunk:  # skip keep-alive chunks
+                    f.write(chunk)
+
+        with zipfile.ZipFile(report_file) as z:
+            self.logger.info(
+                "Processing file '%s' for account: %s",
+                f.name,
+                context["account_id"],
+            )
+
+            for filename in z.namelist():
+                with (
+                    z.open(filename) as f,
+                    io.TextIOWrapper(f, encoding="utf-8-sig") as f,
+                ):
+                    yield from csv.DictReader(f)
+
+    @override
+    def post_process(self, row, context=None):
+        for k, v in row.copy().items():
+            if v == "":
+                row[k] = None
+
+        return row
+
+    @cached_property
+    def columns(self):
+        # only selected properties
+        column_names = {
+            p
+            for p in self.schema["properties"]
+            if self.metadata[("properties", p)].selected is not False
+        }
+
+        # resolve restricted column combinations
+        # https://learn.microsoft.com/en-us/advertising/guides/reports?view=bingads-13#columnrestrictions
+        for restrictions in self.column_restrictions:
+            attributes, impression_share_performance_statistics = restrictions
+
+            # preserve attributes over impression_share_performance_statistics
+            if any(a in column_names for a in attributes):
+                column_names -= impression_share_performance_statistics
+            elif any(
+                isps in column_names for isps in impression_share_performance_statistics
+            ):
+                column_names -= attributes
+
+        return column_names
+
+
+class AdGroupDailyPerformanceStream(_DailyPerformanceReportStream):
+    """Define ad group daily performance stream."""
+
+    name = "ad_group_daily_performance"
+
+    schema = th.PropertiesList(
+        th.Property("AbsoluteTopImpressionRatePercent", th.StringType),
+        th.Property("AbsoluteTopImpressionShareLostToBudgetPercent", th.StringType),
+        th.Property("AbsoluteTopImpressionShareLostToRankPercent", th.StringType),
+        th.Property("AbsoluteTopImpressionSharePercent", th.StringType),
+        th.Property("AccountId", th.StringType),
+        th.Property("AccountName", th.StringType),
+        th.Property("AccountNumber", th.StringType),
+        th.Property("AccountStatus", th.StringType),
+        th.Property("AdDistribution", th.StringType),
+        th.Property("AdGroupId", th.StringType),
+        th.Property("AdGroupLabels", th.StringType),
+        th.Property("AdGroupName", th.StringType),
+        th.Property("AdGroupType", th.StringType),
+        th.Property("AdRelevance", th.StringType),
+        th.Property("AllConversionRate", th.StringType),
+        th.Property("AllConversions", th.StringType),
+        th.Property("AllConversionsQualified", th.StringType),
+        th.Property("AllCostPerConversion", th.StringType),
+        th.Property("AllReturnOnAdSpend", th.StringType),
+        th.Property("AllRevenue", th.StringType),
+        th.Property("AllRevenuePerConversion", th.StringType),
+        th.Property("Assists", th.StringType),
+        th.Property("AudienceImpressionLostToBudgetPercent", th.StringType),
+        th.Property("AudienceImpressionLostToRankPercent", th.StringType),
+        th.Property("AudienceImpressionSharePercent", th.StringType),
+        th.Property("AverageCpc", th.StringType),
+        th.Property("AverageCpm", th.StringType),
+        th.Property("AverageCPV", th.StringType),
+        th.Property("AveragePosition", th.StringType),
+        th.Property("AverageWatchTimePerImpression", th.StringType),
+        th.Property("AverageWatchTimePerVideoView", th.StringType),
+        th.Property("BaseCampaignId", th.StringType),
+        th.Property("BidMatchType", th.StringType),
+        th.Property("CampaignId", th.StringType),
+        th.Property("CampaignName", th.StringType),
+        th.Property("CampaignStatus", th.StringType),
+        th.Property("CampaignType", th.StringType),
+        th.Property("Clicks", th.StringType),
+        th.Property("ClickSharePercent", th.StringType),
+        th.Property("CompletedVideoViews", th.StringType),
+        th.Property("ConversionRate", th.StringType),
+        th.Property("Conversions", th.StringType),
+        th.Property("ConversionsQualified", th.StringType),
+        th.Property("CostPerAssist", th.StringType),
+        th.Property("CostPerConversion", th.StringType),
+        th.Property("CostPerInstall", th.StringType),
+        th.Property("CostPerSale", th.StringType),
+        th.Property("Ctr", th.StringType),
+        th.Property("CurrencyCode", th.StringType),
+        th.Property("CustomerId", th.StringType),
+        th.Property("CustomerName", th.StringType),
+        th.Property("CustomParameters", th.StringType),
+        th.Property("DeliveredMatchType", th.StringType),
+        th.Property("DeviceOS", th.StringType),
+        th.Property("DeviceType", th.StringType),
+        th.Property("ExactMatchImpressionSharePercent", th.StringType),
+        th.Property("ExpectedCtr", th.StringType),
+        th.Property("FinalUrlSuffix", th.StringType),
+        th.Property("Goal", th.StringType),
+        th.Property("GoalId", th.StringType),
+        th.Property("GoalType", th.StringType),
+        th.Property("HistoricalAdRelevance", th.StringType),
+        th.Property("HistoricalExpectedCtr", th.StringType),
+        th.Property("HistoricalLandingPageExperience", th.StringType),
+        th.Property("HistoricalQualityScore", th.StringType),
+        th.Property("ImpressionLostToBudgetPercent", th.StringType),
+        th.Property("ImpressionLostToRankAggPercent", th.StringType),
+        th.Property("Impressions", th.StringType),
+        th.Property("ImpressionSharePercent", th.StringType),
+        th.Property("Installs", th.StringType),
+        th.Property("LandingPageExperience", th.StringType),
+        th.Property("Language", th.StringType),
+        th.Property("Network", th.StringType),
+        th.Property("PhoneCalls", th.StringType),
+        th.Property("PhoneImpressions", th.StringType),
+        th.Property("Ptr", th.StringType),
+        th.Property("QualityScore", th.StringType),
+        th.Property("RelativeCtr", th.StringType),
+        th.Property("ReturnOnAdSpend", th.StringType),
+        th.Property("Revenue", th.StringType),
+        th.Property("RevenuePerAssist", th.StringType),
+        th.Property("RevenuePerConversion", th.StringType),
+        th.Property("RevenuePerInstall", th.StringType),
+        th.Property("RevenuePerSale", th.StringType),
+        th.Property("Sales", th.StringType),
+        th.Property("Spend", th.StringType),
+        th.Property("Status", th.StringType),
+        th.Property("TimePeriod", th.StringType),
+        th.Property("TopImpressionRatePercent", th.StringType),
+        th.Property("TopImpressionShareLostToBudgetPercent", th.StringType),
+        th.Property("TopImpressionShareLostToRankPercent", th.StringType),
+        th.Property("TopImpressionSharePercent", th.StringType),
+        th.Property("TopVsOther", th.StringType),
+        th.Property("TotalWatchTimeInMS", th.StringType),
+        th.Property("TrackingTemplate", th.StringType),
+        th.Property("VideoCompletionRate", th.StringType),
+        th.Property("VideoViews", th.StringType),
+        th.Property("VideoViewsAt25Percent", th.StringType),
+        th.Property("VideoViewsAt50Percent", th.StringType),
+        th.Property("VideoViewsAt75Percent", th.StringType),
+        th.Property("ViewThroughConversions", th.StringType),
+        th.Property("ViewThroughConversionsQualified", th.StringType),
+        th.Property("ViewThroughRate", th.StringType),
+        th.Property("ViewThroughRevenue", th.StringType),
+    ).to_dict()
+
+    # https://learn.microsoft.com/en-us/advertising/reporting-service/adgroupperformancereportrequest?view=bingads-13&tabs=json
+    report_request_name = "AdGroupPerformanceReportRequest"
+
+    column_restrictions = (
+        (
+            {
+                "BidMatchType",
+                "DeviceOS",
+                "Goal",
+                "GoalType",
+                "TopVsOther",
+            },
+            {
+                "AbsoluteTopImpressionRatePercent",
+                "AbsoluteTopImpressionShareLostToBudgetPercent",
+                "AbsoluteTopImpressionShareLostToRankPercent",
+                "AbsoluteTopImpressionSharePercent",
+                "AudienceImpressionLostToBudgetPercent",
+                "AudienceImpressionLostToRankPercent",
+                "AudienceImpressionSharePercent",
+                "ClickSharePercent",
+                "ExactMatchImpressionSharePercent",
+                "ImpressionLostToAdRelevancePercent",
+                "ImpressionLostToBidPercent",
+                "ImpressionLostToBudgetPercent",
+                "ImpressionLostToExpectedCtrPercent",
+                "ImpressionLostToRankAggPercent",
+                "ImpressionLostToRankPercent",
+                "ImpressionSharePercent",
+                "RelativeCtr",
+                "TopImpressionRatePercent",
+                "TopImpressionShareLostToBudgetPercent",
+                "TopImpressionShareLostToRankPercent",
+                "TopImpressionSharePercent",
+            },
+        ),
+        (
+            {
+                "CustomerId",
+                "CustomerName",
+                "DeliveredMatchType",
+            },
+            {
+                "AudienceImpressionLostToBudgetPercent",
+                "AudienceImpressionLostToRankPercent",
+                "AudienceImpressionSharePercent",
+                "RelativeCtr",
+            },
+        ),
+    )
+
+    @override
+    @cached_property
+    def primary_keys(self):
+        return (*super().primary_keys, "AdGroupId")
+
+
+class AdDailyPerformanceStream(_DailyPerformanceReportStream):
+    """Define ad daily performance stream."""
+
+    name = "ad_daily_performance"
+
+    schema = th.PropertiesList(
+        th.Property("AbsoluteTopImpressionRatePercent", th.StringType),
+        th.Property("AccountId", th.StringType),
+        th.Property("AccountName", th.StringType),
+        th.Property("AccountNumber", th.StringType),
+        th.Property("AccountStatus", th.StringType),
+        th.Property("AdDescription", th.StringType),
+        th.Property("AdDescription2", th.StringType),
+        th.Property("AdDistribution", th.StringType),
+        th.Property("AdGroupId", th.StringType),
+        th.Property("AdGroupName", th.StringType),
+        th.Property("AdGroupStatus", th.StringType),
+        th.Property("AdId", th.StringType),
+        th.Property("AdLabels", th.StringType),
+        th.Property("AdStatus", th.StringType),
+        th.Property("AdStrength", th.StringType),
+        th.Property("AdStrengthActionItems", th.StringType),
+        th.Property("AdTitle", th.StringType),
+        th.Property("AdType", th.StringType),
+        th.Property("AllConversionRate", th.StringType),
+        th.Property("AllConversions", th.StringType),
+        th.Property("AllConversionsQualified", th.StringType),
+        th.Property("AllCostPerConversion", th.StringType),
+        th.Property("AllReturnOnAdSpend", th.StringType),
+        th.Property("AllRevenue", th.StringType),
+        th.Property("AllRevenuePerConversion", th.StringType),
+        th.Property("Assists", th.StringType),
+        th.Property("AverageCpc", th.StringType),
+        th.Property("AverageCpm", th.StringType),
+        th.Property("AverageCPV", th.StringType),
+        th.Property("AveragePosition", th.StringType),
+        th.Property("AverageWatchTimePerImpression", th.StringType),
+        th.Property("AverageWatchTimePerVideoView", th.StringType),
+        th.Property("BaseCampaignId", th.StringType),
+        th.Property("BidMatchType", th.StringType),
+        th.Property("BusinessName", th.StringType),
+        th.Property("CampaignId", th.StringType),
+        th.Property("CampaignName", th.StringType),
+        th.Property("CampaignStatus", th.StringType),
+        th.Property("CampaignType", th.StringType),
+        th.Property("Clicks", th.StringType),
+        th.Property("CompletedVideoViews", th.StringType),
+        th.Property("ConversionRate", th.StringType),
+        th.Property("Conversions", th.StringType),
+        th.Property("ConversionsQualified", th.StringType),
+        th.Property("CostPerAssist", th.StringType),
+        th.Property("CostPerConversion", th.StringType),
+        th.Property("Ctr", th.StringType),
+        th.Property("CurrencyCode", th.StringType),
+        th.Property("CustomerId", th.StringType),
+        th.Property("CustomerName", th.StringType),
+        th.Property("CustomParameters", th.StringType),
+        th.Property("DeliveredMatchType", th.StringType),
+        th.Property("DestinationUrl", th.StringType),
+        th.Property("DeviceOS", th.StringType),
+        th.Property("DeviceType", th.StringType),
+        th.Property("DisplayUrl", th.StringType),
+        th.Property("FinalAppUrl", th.StringType),
+        th.Property("FinalMobileUrl", th.StringType),
+        th.Property("FinalUrl", th.StringType),
+        th.Property("FinalUrlSuffix", th.StringType),
+        th.Property("Goal", th.StringType),
+        th.Property("GoalId", th.StringType),
+        th.Property("GoalType", th.StringType),
+        th.Property("Headline", th.StringType),
+        th.Property("Impressions", th.StringType),
+        th.Property("Language", th.StringType),
+        th.Property("LongHeadline", th.StringType),
+        th.Property("Network", th.StringType),
+        th.Property("Path1", th.StringType),
+        th.Property("Path2", th.StringType),
+        th.Property("ReturnOnAdSpend", th.StringType),
+        th.Property("Revenue", th.StringType),
+        th.Property("RevenuePerAssist", th.StringType),
+        th.Property("RevenuePerConversion", th.StringType),
+        th.Property("Spend", th.StringType),
+        th.Property("TimePeriod", th.StringType),
+        th.Property("TitlePart1", th.StringType),
+        th.Property("TitlePart2", th.StringType),
+        th.Property("TitlePart3", th.StringType),
+        th.Property("TopImpressionRatePercent", th.StringType),
+        th.Property("TopVsOther", th.StringType),
+        th.Property("TotalWatchTimeInMS", th.StringType),
+        th.Property("TrackingTemplate", th.StringType),
+        th.Property("VideoCompletionRate", th.StringType),
+        th.Property("VideoViews", th.StringType),
+        th.Property("VideoViewsAt25Percent", th.StringType),
+        th.Property("VideoViewsAt50Percent", th.StringType),
+        th.Property("VideoViewsAt75Percent", th.StringType),
+        th.Property("ViewThroughConversions", th.StringType),
+        th.Property("ViewThroughConversionsQualified", th.StringType),
+        th.Property("ViewThroughRate", th.StringType),
+        th.Property("ViewThroughRevenue", th.StringType),
+    ).to_dict()
+
+    # https://learn.microsoft.com/en-us/advertising/reporting-service/adperformancereportrequest?view=bingads-13&tabs=json
+    report_request_name = "AdPerformanceReportRequest"
+
+    @override
+    @cached_property
+    def primary_keys(self):
+        return (*super().primary_keys, "AdId")
+
+
+class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
+    """Define kewword daily performance stream."""
+
+    name = "keyword_daily_performance"
+
+    schema = th.PropertiesList(
+        th.Property("AbsoluteTopImpressionRatePercent", th.StringType),
+        th.Property("AccountId", th.StringType),
+        th.Property("AccountName", th.StringType),
+        th.Property("AccountNumber", th.StringType),
+        th.Property("AccountStatus", th.StringType),
+        th.Property("AdDistribution", th.StringType),
+        th.Property("AdGroupId", th.StringType),
+        th.Property("AdGroupName", th.StringType),
+        th.Property("AdGroupStatus", th.StringType),
+        th.Property("AdId", th.StringType),
+        th.Property("AdRelevance", th.StringType),
+        th.Property("AdType", th.StringType),
+        th.Property("AllConversionRate", th.StringType),
+        th.Property("AllConversions", th.StringType),
+        th.Property("AllConversionsQualified", th.StringType),
+        th.Property("AllCostPerConversion", th.StringType),
+        th.Property("AllReturnOnAdSpend", th.StringType),
+        th.Property("AllRevenue", th.StringType),
+        th.Property("AllRevenuePerConversion", th.StringType),
+        th.Property("Assists", th.StringType),
+        th.Property("AverageCpc", th.StringType),
+        th.Property("AverageCpm", th.StringType),
+        th.Property("AveragePosition", th.StringType),
+        th.Property("BaseCampaignId", th.StringType),
+        th.Property("BidMatchType", th.StringType),
+        th.Property("BidStrategyType", th.StringType),
+        th.Property("CampaignId", th.StringType),
+        th.Property("CampaignName", th.StringType),
+        th.Property("CampaignStatus", th.StringType),
+        th.Property("Clicks", th.StringType),
+        th.Property("ConversionRate", th.StringType),
+        th.Property("Conversions", th.StringType),
+        th.Property("ConversionsQualified", th.StringType),
+        th.Property("CostPerAssist", th.StringType),
+        th.Property("CostPerConversion", th.StringType),
+        th.Property("Ctr", th.StringType),
+        th.Property("CurrencyCode", th.StringType),
+        th.Property("CurrentMaxCpc", th.StringType),
+        th.Property("CustomParameters", th.StringType),
+        th.Property("DeliveredMatchType", th.StringType),
+        th.Property("DestinationUrl", th.StringType),
+        th.Property("DeviceOS", th.StringType),
+        th.Property("DeviceType", th.StringType),
+        th.Property("ExpectedCtr", th.StringType),
+        th.Property("FinalAppUrl", th.StringType),
+        th.Property("FinalMobileUrl", th.StringType),
+        th.Property("FinalUrl", th.StringType),
+        th.Property("FinalUrlSuffix", th.StringType),
+        th.Property("FirstPageBid", th.StringType),
+        th.Property("Goal", th.StringType),
+        th.Property("GoalId", th.StringType),
+        th.Property("GoalType", th.StringType),
+        th.Property("HistoricalAdRelevance", th.StringType),
+        th.Property("HistoricalExpectedCtr", th.StringType),
+        th.Property("HistoricalLandingPageExperience", th.StringType),
+        th.Property("HistoricalQualityScore", th.StringType),
+        th.Property("Impressions", th.StringType),
+        th.Property("Keyword", th.StringType),
+        th.Property("KeywordId", th.StringType),
+        th.Property("KeywordLabels", th.StringType),
+        th.Property("KeywordStatus", th.StringType),
+        th.Property("LandingPageExperience", th.StringType),
+        th.Property("Language", th.StringType),
+        th.Property("Mainline1Bid", th.StringType),
+        th.Property("MainlineBid", th.StringType),
+        th.Property("Network", th.StringType),
+        th.Property("QualityImpact", th.StringType),
+        th.Property("QualityScore", th.StringType),
+        th.Property("ReturnOnAdSpend", th.StringType),
+        th.Property("Revenue", th.StringType),
+        th.Property("RevenuePerAssist", th.StringType),
+        th.Property("RevenuePerConversion", th.StringType),
+        th.Property("Spend", th.StringType),
+        th.Property("TimePeriod", th.StringType),
+        th.Property("TopImpressionRatePercent", th.StringType),
+        th.Property("TopVsOther", th.StringType),
+        th.Property("TrackingTemplate", th.StringType),
+        th.Property("ViewThroughConversions", th.StringType),
+        th.Property("ViewThroughConversionsQualified", th.StringType),
+        th.Property("ViewThroughRevenue", th.StringType),
+    ).to_dict()
+
+    # https://learn.microsoft.com/en-us/advertising/reporting-service/keywordperformancereportrequest?view=bingads-13&tabs=json
+    report_request_name = "KeywordPerformanceReportRequest"
+
+    @override
+    @cached_property
+    def primary_keys(self):
+        return (*super().primary_keys, "KeywordId")

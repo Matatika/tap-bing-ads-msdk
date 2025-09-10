@@ -15,6 +15,9 @@ STREAM_TYPES = [
     streams.AdGroupStream,
     streams.AdStream,
     streams.KeywordStream,
+    streams.AdGroupDailyPerformanceStream,
+    streams.AdDailyPerformanceStream,
+    streams.KeywordDailyPerformanceStream,
 ]
 
 
