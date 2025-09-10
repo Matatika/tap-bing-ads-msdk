@@ -196,7 +196,7 @@ class _BulkStream(BingAdsStream):
             headers=self.http_headers,
             auth=self.authenticator,
         )
-        response.raise_for_status()
+        self.validate_response(response)
 
         request_id = response.json()["DownloadRequestId"]
         attempts = 0
@@ -208,7 +208,7 @@ class _BulkStream(BingAdsStream):
                 headers=self.http_headers,
                 auth=self.authenticator,
             )
-            response.raise_for_status()
+            self.validate_response(response)
 
             status = response.json()
             request_status = status["RequestStatus"]
@@ -243,7 +243,7 @@ class _BulkStream(BingAdsStream):
             self.requests_session.get(status["ResultFileUrl"], stream=True) as r,
             bulk_file.open("wb") as f,
         ):
-            r.raise_for_status()
+            self.validate_response(r)
 
             for chunk in r.iter_content(chunk_size=8192):  # 8 KB chunks
                 if chunk:  # skip keep-alive chunks
@@ -520,7 +520,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
             headers=self.http_headers,
             auth=self.authenticator,
         )
-        response.raise_for_status()
+        self.validate_response(response)
 
         request_id = response.json()["ReportRequestId"]
         attempts = 0
@@ -532,7 +532,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
                 headers=self.http_headers,
                 auth=self.authenticator,
             )
-            response.raise_for_status()
+            self.validate_response(response)
 
             request_status = response.json()["ReportRequestStatus"]
             status = request_status["Status"]
@@ -567,7 +567,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
             self.requests_session.get(download_url, stream=True) as r,
             report_file.open("wb") as f,
         ):
-            r.raise_for_status()
+            self.validate_response(r)
 
             for chunk in r.iter_content(chunk_size=8192):  # 8 KB chunks
                 if chunk:  # skip keep-alive chunks
