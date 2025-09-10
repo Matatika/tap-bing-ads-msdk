@@ -18,8 +18,8 @@ from typing_extensions import override
 
 from tap_bing_ads.client import BingAdsStream
 
-BULK_DOWNLOAD_MAX_ATTEMPTS = 60
-REPORT_DOWNLOAD_MAX_ATTEMPTS = 120
+BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 60
+REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 120
 
 
 class _AccountInfoStream(BingAdsStream):
@@ -210,37 +210,44 @@ class _BulkStream(BingAdsStream):
             )
             self.validate_response(response)
 
-            status = response.json()
-            request_status = status["RequestStatus"]
+            download_request_status = response.json()
+            status = download_request_status["RequestStatus"]
             attempts += 1
 
             self.logger.info(
-                "Download %d%% complete (%s)",
-                status["PercentComplete"],
-                request_status,
+                "[%*d/%d] Bulk download request status: %s (%d%% complete)",
+                len(str(BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS)),
+                attempts,
+                BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS,
+                status,
+                download_request_status["PercentComplete"],
             )
 
-            if request_status == "InProgress":
-                if attempts >= BULK_DOWNLOAD_MAX_ATTEMPTS:
+            if status == "InProgress":
+                if attempts >= BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS:
                     msg = (
-                        f"Download incomplete ({request_status}) after checking "
-                        f"{attempts} time(s)"
+                        f"Bulk download request incomplete ({status}) after checking "
+                        f"{attempts} times"
                     )
                     raise RuntimeError(msg)
 
                 time.sleep(1)
                 continue
 
-            if request_status == "Completed":
+            if status == "Completed":
                 break
 
-            msg = "Download failed ({}): {}".format(request_status, status["Errors"])
+            msg = "Bulk download request failed ({}): {}".format(
+                status,
+                download_request_status["Errors"],
+            )
             raise RuntimeError(msg)
 
+        download_url = download_request_status["ResultFileUrl"]
         bulk_file.parent.mkdir(exist_ok=True)
 
         with (
-            self.requests_session.get(status["ResultFileUrl"], stream=True) as r,
+            self.requests_session.get(download_url, stream=True) as r,
             bulk_file.open("wb") as f,
         ):
             self.validate_response(r)
@@ -534,15 +541,24 @@ class _DailyPerformanceReportStream(BingAdsStream):
             )
             self.validate_response(response)
 
-            request_status = response.json()["ReportRequestStatus"]
-            status = request_status["Status"]
+            report_request_status = response.json()["ReportRequestStatus"]
+            status = report_request_status["Status"]
             attempts += 1
 
+            self.logger.info(
+                "[%*d/%d] %s status: %s",
+                len(str(REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS)),
+                attempts,
+                REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS,
+                self.report_request_name,
+                status,
+            )
+
             if status == "Pending":
-                if attempts >= REPORT_DOWNLOAD_MAX_ATTEMPTS:
+                if attempts >= REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS:
                     msg = (
-                        f"Download incomplete ({status}) after checking {attempts} "
-                        "time(s)"
+                        f"{self.report_request_name} incomplete ({status}) after "
+                        f"checking {attempts} times"
                     )
                     raise RuntimeError(msg)
 
@@ -552,13 +568,17 @@ class _DailyPerformanceReportStream(BingAdsStream):
             if status == "Success":
                 break
 
-            msg = f"Download failed ({status})"
+            msg = f"{self.report_request_name} failed ({status})"
             raise RuntimeError(msg)
 
-        download_url = request_status["ReportDownloadUrl"]
+        download_url = report_request_status["ReportDownloadUrl"]
 
         if not download_url:
-            self.logger.info("No data available for account: %s", account_id)
+            self.logger.info(
+                "No %s data available for account: %s",
+                self.report_request_name,
+                account_id,
+            )
             return
 
         report_file.parent.mkdir(exist_ok=True)
