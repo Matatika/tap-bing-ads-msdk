@@ -594,7 +594,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
                 int(r.headers["Content-Length"]) / (1000**2),
             )
 
-            for chunk in r.iter_content(chunk_size=8192):  # 8 KB chunks
+            for chunk in r.iter_content(chunk_size=1000**2):  # 1 MB chunks
                 if chunk:  # skip keep-alive chunks
                     f.write(chunk)
 
