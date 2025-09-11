@@ -490,7 +490,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
         report_file = (
             Path(tempfile.gettempdir())
             / f"{self.tap_name}_{self._tap.initialized_at}"
-            / f"{account_id}.zip"
+            / f"{account_id}__{self.name}.zip"
         )
 
         start = self.get_starting_timestamp(context)
