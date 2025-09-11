@@ -588,6 +588,11 @@ class _DailyPerformanceReportStream(BingAdsStream):
             report_file.open("wb") as f,
         ):
             self.validate_response(r)
+            self.logger.info(
+                "Downloading: %s (%.1f MB)",
+                f.name,
+                int(r.headers["Content-Length"]) / (1000**2),
+            )
 
             for chunk in r.iter_content(chunk_size=8192):  # 8 KB chunks
                 if chunk:  # skip keep-alive chunks
@@ -597,14 +602,19 @@ class _DailyPerformanceReportStream(BingAdsStream):
             self.logger.info(
                 "Processing file '%s' for account: %s",
                 f.name,
-                context["account_id"],
+                account_id,
             )
 
-            for filename in z.namelist():
+            for info in z.infolist():
                 with (
-                    z.open(filename) as f,
+                    z.open(info.filename) as f,
                     io.TextIOWrapper(f, encoding="utf-8-sig") as f,
                 ):
+                    self.logger.info(
+                        "Processing zipped file: %s (%.1fMB)",
+                        f.name,
+                        info.file_size / (1000**2),
+                    )
                     yield from csv.DictReader(f)
 
     @override
