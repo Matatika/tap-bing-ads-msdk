@@ -14,12 +14,14 @@ from functools import cached_property
 from pathlib import Path
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
+from singer_sdk.streams import Stream
 from typing_extensions import override
 
+from tap_bing_ads import BufferDeque
 from tap_bing_ads.client import BingAdsStream
 
 BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 60
-REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 120
+REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 300
 
 
 class _AccountInfoStream(BingAdsStream):
@@ -41,18 +43,58 @@ class _AccountInfoStream(BingAdsStream):
     records_jsonpath = "$.AccountsInfo[*]"
 
     @override
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # request reports in batches of up to 1000 accounts
+        self._account_ids_buffer = BufferDeque(maxlen=1000)
+
+    @override
     def prepare_request_payload(self, context, next_page_token):
         return {"CustomerId": self.config["customer_id"]}
+
+    @override
+    def parse_response(self, response):
+        for record in super().parse_response(response):
+            yield record
+
+        # make sure we process the remaining buffer entries
+        self._account_ids_buffer.finalize()
+        yield record  # yield last record again to force child context generation
+
+    @override
+    def generate_child_contexts(self, record, context):
+        self._account_ids_buffer.append(record["Id"])
+
+        with self._account_ids_buffer as buf:
+            if buf.flush:
+                yield {"account_ids": buf}
 
     @override
     def get_child_context(self, record, context):
         return {"account_id": record["Id"]}
 
 
+class _AccountContextStream(Stream):
+    parent_stream_type = _AccountInfoStream
+    name = "_account_context"
+    selected = False
+    schema = th.PropertiesList().to_dict()
+
+    @override
+    def get_records(self, context):
+        for account_id in context["account_ids"]:
+            yield {"account_id": account_id}
+
+    @override
+    def get_child_context(self, record, context):
+        return {"account_id": record["account_id"]}
+
+
 class AccountStream(BingAdsStream):
     """Define accounts stream."""
 
-    parent_stream_type = _AccountInfoStream
+    parent_stream_type = _AccountContextStream
     name = "accounts"
     primary_keys = ("Id",)
 
@@ -129,7 +171,7 @@ class AccountStream(BingAdsStream):
 
 
 class _BulkStream(BingAdsStream):
-    parent_stream_type = _AccountInfoStream
+    parent_stream_type = _AccountContextStream
     primary_keys = ("Id",)
 
     download_entity_name: str = ...
@@ -480,17 +522,18 @@ class _DailyPerformanceReportStream(BingAdsStream):
     primary_keys = ("TimePeriod",)
     replication_key = "TimePeriod"
     is_timestamp_replication_key = True
+    state_partitioning_keys = ()
 
     report_request_name: str = ...
     column_restrictions: tuple[tuple[set[str], set[str]], ...] = ()
 
     @override
     def get_records(self, context):
-        account_id = context["account_id"]
+        account_ids = list(context["account_ids"])
         report_file = (
             Path(tempfile.gettempdir())
             / f"{self.tap_name}_{self._tap.initialized_at}"
-            / f"{account_id}__{self.name}.zip"
+            / f"{self.name}.zip"
         )
 
         start = self.get_starting_timestamp(context)
@@ -505,9 +548,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
                     "ExcludeReportFooter": True,
                     "ExcludeReportHeader": True,
                     "FormatVersion": "2.0",
-                    "Scope": {
-                        "AccountIds": [account_id],
-                    },
+                    "Scope": {"AccountIds": account_ids},
                     "Time": {
                         "CustomDateRangeEnd": {
                             "Day": now.day,
@@ -577,7 +618,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
             self.logger.info(
                 "No %s data available for account: %s",
                 self.report_request_name,
-                account_id,
+                account_ids,
             )
             return
 
@@ -600,9 +641,9 @@ class _DailyPerformanceReportStream(BingAdsStream):
 
         with zipfile.ZipFile(report_file) as z:
             self.logger.info(
-                "Processing file '%s' for account: %s",
+                "Processing file '%s' for accounts: %s",
                 f.name,
-                account_id,
+                account_ids,
             )
 
             for info in z.infolist():
