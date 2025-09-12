@@ -9,7 +9,7 @@ import io
 import tempfile
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from pathlib import Path
 
@@ -173,6 +173,8 @@ class AccountStream(BingAdsStream):
 class _BulkStream(BingAdsStream):
     parent_stream_type = _AccountContextStream
     primary_keys = ("Id",)
+    replication_key = "Sync Time"
+    is_timestamp_replication_key = True
 
     download_entity_name: str = ...
     entity_type_pattern: str = ...
@@ -196,12 +198,26 @@ class _BulkStream(BingAdsStream):
         if not bulk_file.exists():
             self._download_bulk_file(account_id, bulk_file)
 
+        # to avoid iterating over the bulk CSV file more times than absolutely necessary
+        # , in the interest of performance and memory constraints this logic assumes
+        # rows are ordered by entity type, with FormatVersion and Account appearing as
+        # the first two rows after the header
         with gzip.open(bulk_file, "rt", encoding="utf-8-sig") as f:
             self.logger.info("Processing file '%s' for account: %s", f.name, account_id)
 
+            reader = csv.DictReader(f)
             start = None
 
-            for i, row in enumerate(csv.DictReader(f), start=2):
+            next(reader)  # skip FormatVersion
+
+            # extract sync time from Account
+            account = next(reader)
+            self.sync_time = datetime.strptime(
+                account[self.replication_key],
+                r"%m/%d/%Y %H:%M:%S",
+            ).astimezone(tz=timezone.utc)
+
+            for i, row in enumerate(reader, start=2):
                 if fnmatch.fnmatch(row["Type"], self.entity_type_pattern):
                     start = i
                     yield row
@@ -209,6 +225,13 @@ class _BulkStream(BingAdsStream):
 
                 if start:
                     return
+
+            if not start:
+                self.logger.info(
+                    "No %s data available for account: %s",
+                    self.download_entity_name,
+                    account_id,
+                )
 
     @override
     def post_process(self, row, context=None):
@@ -222,7 +245,29 @@ class _BulkStream(BingAdsStream):
 
         return row
 
+    # necessary to implement custom state incrementation logic as sync time is not
+    # present in any entity data other than Account (which we do not sync from the bulk
+    # CSV file)
+    @override
+    def _increment_stream_state(self, latest_record, *, context=None):
+        return super()._increment_stream_state(
+            {
+                **latest_record,
+                self.replication_key: self.sync_time.isoformat(),
+            },
+            context=context,
+        )
+
     def _download_bulk_file(self, account_id: str, bulk_file: Path):
+        now = datetime.now(tz=timezone.utc)
+        start = self.get_starting_timestamp(self.context)
+
+        last_sync_time = (
+            start.isoformat()
+            if (now - start).total_seconds() < timedelta(days=30).total_seconds()
+            else None
+        )
+
         response = self.requests_session.post(
             "https://bulk.api.bingads.microsoft.com/Bulk/v13/Campaigns/DownloadByAccountIds",
             json={
@@ -234,6 +279,7 @@ class _BulkStream(BingAdsStream):
                     if isinstance(s, _BulkStream)
                 ],
                 "FormatVersion": "6.0",
+                "LastSyncTimeInUTC": last_sync_time,
             },
             headers=self.http_headers,
             auth=self.authenticator,
