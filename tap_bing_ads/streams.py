@@ -206,7 +206,6 @@ class _BulkStream(BingAdsStream):
             self.logger.info("Processing file '%s' for account: %s", f.name, account_id)
 
             reader = csv.DictReader(f)
-            start = None
 
             next(reader)  # skip FormatVersion
 
@@ -217,16 +216,18 @@ class _BulkStream(BingAdsStream):
                 r"%m/%d/%Y %H:%M:%S",
             ).astimezone(tz=timezone.utc)
 
-            for i, row in enumerate(reader, start=2):
+            is_matching_entity_type = False
+
+            for row in reader:
                 if fnmatch.fnmatch(row["Type"], self.entity_type_pattern):
-                    start = i
+                    is_matching_entity_type = True
                     yield row
                     continue
 
-                if start:
+                if is_matching_entity_type:
                     return
 
-            if not start:
+            if not is_matching_entity_type:
                 self.logger.info(
                     "No %s data available for account: %s",
                     self.download_entity_name,
