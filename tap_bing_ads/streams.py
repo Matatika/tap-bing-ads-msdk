@@ -251,11 +251,10 @@ class _BulkStream(BingAdsStream):
     # CSV file)
     @override
     def _increment_stream_state(self, latest_record, *, context=None):
+        replication_info = {self.replication_key: self.sync_time.isoformat()}
+
         return super()._increment_stream_state(
-            {
-                **latest_record,
-                self.replication_key: self.sync_time.isoformat(),
-            },
+            latest_record | replication_info,
             context=context,
         )
 
