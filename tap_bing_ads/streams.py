@@ -119,7 +119,7 @@ class AccountStream(BingAdsStream):
                 th.Property("PostalCode", th.StringType),
                 th.Property("StateOrProvince", th.StringType),
                 th.Property("TimeStamp", th.StringType),
-                th.Property("BusinessName", th.DateTimeType),
+                th.Property("BusinessName", th.StringType),
             ),
         ),
         th.Property("CurrencyCode", th.StringType),
