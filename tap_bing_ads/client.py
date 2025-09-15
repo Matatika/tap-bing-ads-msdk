@@ -122,22 +122,105 @@ class BingAdsStream(RESTStream):
             input=response.json(parse_float=decimal.Decimal),
         )
 
-    def post_process(
-        self,
-        row: dict,
-        context: Context | None = None,  # noqa: ARG002
-    ) -> dict | None:
-        """As needed, append or transform raw data to match expected structure.
+    @override
+    def post_process(self, row, context):
+        for k, v in row.items():
+            row[k] = self._transform_property_value(v, breadcrumb=(k,))
 
-        Note: As of SDK v0.47.0, this method is automatically executed for all stream types.
-        You should not need to call this method directly in custom `get_records` implementations.
-
-        Args:
-            row: An individual record from the stream.
-            context: The stream context.
-
-        Returns:
-            The updated record dictionary, or ``None`` to skip the record.
-        """
-        # TODO: Delete this method if not needed.
         return row
+
+    @cached_property
+    def integer_property_breadcrumbs(self):
+        """Breadcrumbs of integer properties."""
+        return self._property_breadcrumbs_of_type("integer")
+
+    @cached_property
+    def number_property_breadcrumbs(self):
+        """Breadcrumbs of number properties."""
+        return self._property_breadcrumbs_of_type("number")
+
+    @cached_property
+    def boolean_property_breadcrumbs(self):
+        """Breadcrumbs of boolean properties."""
+        return self._property_breadcrumbs_of_type("boolean")
+
+    @cached_property
+    def datetime_property_breadcrumbs(self):
+        """Breadcrumbs of date-time properties."""
+        return self._property_breadcrumbs(lambda _, v: v.get("format") == "date-time")
+
+    def _property_breadcrumbs(
+        self,
+        predicate: t.Callable[[tuple[str | tuple[()], ...], dict], bool],
+        *,
+        parent: tuple[str, ...] = (),
+        properties: dict[str, dict] | None = None,
+    ):
+        properties = properties or self.schema["properties"]
+        breadcrumbs: set[tuple[str | tuple[()], ...]] = set()
+
+        for k, v in properties.items():
+            breadcrumb = (*parent, k)
+
+            if "object" in v["type"]:
+                breadcrumbs |= self._property_breadcrumbs(
+                    predicate,
+                    parent=breadcrumb,
+                    properties=v["properties"],
+                )
+
+            elif "array" in v["type"]:
+                breadcrumbs |= self._property_breadcrumbs(
+                    predicate,
+                    parent=breadcrumb,
+                    properties={(): v["items"]},
+                )
+
+            elif predicate(breadcrumb, v):
+                breadcrumbs.add(breadcrumb)
+
+        return breadcrumbs
+
+    def _property_breadcrumbs_of_type(self, type_: str):
+        return self._property_breadcrumbs(lambda _, v: type_ in v["type"])
+
+    def to_float(self, value: str):
+        """Convert a string value into a float."""
+        return float(value)
+
+    def to_datetime_isoformat(self, value: str):
+        """Convert a string value into a date-time ISO8601 format string."""
+        return value
+
+    def _transform_property_value(self, value, breadcrumb: tuple[str, ...]):  # noqa: PLR0911
+        if isinstance(value, dict):
+            return {
+                k: self._transform_property_value(v, breadcrumb=(*breadcrumb, k))
+                for k, v in value.items()
+            }
+
+        if isinstance(value, list):
+            return [
+                self._transform_property_value(v, breadcrumb=(*breadcrumb, ()))
+                for v in value
+            ]
+
+        if not isinstance(value, str):
+            return value
+
+        if value == "":
+            return None
+
+        if breadcrumb in self.integer_property_breadcrumbs:
+            return int(value)
+
+        if breadcrumb in self.number_property_breadcrumbs:
+            return self.to_float(value)
+
+        if breadcrumb in self.boolean_property_breadcrumbs:
+            return value.lower() == "true"
+
+        if breadcrumb in self.datetime_property_breadcrumbs:
+            return self.to_datetime_isoformat(value)
+
+        return value
