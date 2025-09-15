@@ -256,7 +256,10 @@ class _AccountInfoStream(BingAdsStream):
 
     @override
     def generate_child_contexts(self, record, context):
-        self._account_ids_buffer.append(record["Id"])
+        account_ids = self.config["account_ids"]
+
+        if not account_ids or record["Id"] in account_ids:
+            self._account_ids_buffer.append(record["Id"])
 
         with self._account_ids_buffer as buf:
             if buf.flush:

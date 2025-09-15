@@ -42,6 +42,11 @@ plugins:
       label: Customer ID
       description: ID of customer to extract data for
 
+    - name: account_ids
+      kind: array
+      label: Account IDs
+      description: IDs of accounts to extract data for (defaults to all if not specified)
+
     - name: start_date
       kind: date_iso8601
       label: Start Date

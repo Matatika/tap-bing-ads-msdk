@@ -62,6 +62,15 @@ class TapBingAds(Tap):
             description="ID of customers to extract data for",
         ),
         th.Property(
+            "account_ids",
+            th.ArrayType(th.IntegerType),
+            title="Account IDs",
+            description=(
+                "IDs of accounts to extract data for (defaults to all if not specified)"
+            ),
+            default=[],
+        ),
+        th.Property(
             "start_date",
             th.DateTimeType(nullable=True),
             description="The earliest record date to sync",
