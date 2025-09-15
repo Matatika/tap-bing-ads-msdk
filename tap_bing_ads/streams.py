@@ -916,6 +916,8 @@ class _DailyPerformanceReportStream(BingAdsStream):
             return None
 
         value = value.removesuffix("%")
+        value = value.replace(",", "")
+
         return super().to_float(value)
 
     @cached_property
