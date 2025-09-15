@@ -31,12 +31,14 @@ class TapBingAds(Tap):
         th.Property(
             "client_id",
             th.StringType,
+            required=True,
             title="Client ID",
             description="App OAuth 2.0 client secret",
         ),
         th.Property(
             "client_secret",
             th.StringType,
+            required=True,
             title="Client secret",
             description="App OAuth 2.0 client secret",
             secret=True,
@@ -44,6 +46,7 @@ class TapBingAds(Tap):
         th.Property(
             "refresh_token",
             th.StringType,
+            required=True,
             title="Refresh secret",
             description="App OAuth 2.0 refresh token",
             secret=True,
@@ -51,6 +54,7 @@ class TapBingAds(Tap):
         th.Property(
             "developer_token",
             th.StringType,
+            required=True,
             title="Developer token",
             description="Microsoft Advertising devleper token",
             secret=True,
@@ -58,6 +62,7 @@ class TapBingAds(Tap):
         th.Property(
             "customer_id",
             th.StringType,
+            required=True,
             title="Customer ID",
             description="ID of customer to extract data for",
         ),

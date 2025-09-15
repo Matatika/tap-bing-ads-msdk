@@ -53,7 +53,7 @@ plugins:
       description: Initial date to start extracting data from
 
     settings_group_validation:
-    - [client_id, client_secret, refresh_token]
+    - [client_id, client_secret, refresh_token, developer_token, customer_id]
 
     # TODO: Declare default configuration values here:
     config:
