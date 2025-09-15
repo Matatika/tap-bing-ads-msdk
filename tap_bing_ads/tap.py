@@ -61,7 +61,7 @@ class TapBingAds(Tap):
         ),
         th.Property(
             "customer_id",
-            th.StringType,
+            th.IntegerType,
             required=True,
             title="Customer ID",
             description="ID of customer to extract data for",
