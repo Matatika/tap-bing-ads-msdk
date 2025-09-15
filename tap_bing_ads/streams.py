@@ -265,10 +265,6 @@ class _AccountInfoStream(BingAdsStream):
             if buf.flush:
                 yield {"account_ids": buf}
 
-    @override
-    def get_child_context(self, record, context):
-        return {"account_id": record["Id"]}
-
 
 class _AccountContextStream(Stream):
     parent_stream_type = _AccountInfoStream
