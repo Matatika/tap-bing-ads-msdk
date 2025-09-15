@@ -45,7 +45,7 @@ plugins:
     - name: account_ids
       kind: array
       label: Account IDs
-      description: IDs of accounts to extract data for (defaults to all if not specified)
+      description: Filter accounts to extract data for by ID
 
     - name: start_date
       kind: date_iso8601

@@ -70,9 +70,7 @@ class TapBingAds(Tap):
             "account_ids",
             th.ArrayType(th.IntegerType),
             title="Account IDs",
-            description=(
-                "IDs of accounts to extract data for (defaults to all if not specified)"
-            ),
+            description="Filter accounts to extract data for by ID",
             default=[],
         ),
         th.Property(
