@@ -23,6 +23,198 @@ from tap_bing_ads.client import BingAdsStream
 BULK_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 60
 REPORT_DOWNLOAD_REQUEST_POLL_MAX_ATTEMPTS = 300
 
+REPORT_ATTRIBUTE_COLUMNS = frozenset(
+    {
+        "AccountId",
+        "AccountName",
+        "AccountNumber",
+        "AccountStatus",
+        "AdDescription",
+        "AdDescription2",
+        "AdDistribution",
+        "AdExtensionId",
+        "AdExtensionType",
+        "AdExtensionTypeId",
+        "AdExtensionVersion",
+        "AdGroupCriterionId",
+        "AdGroupId",
+        "AdGroupLabels",
+        "AdGroupName",
+        "AdGroupStatus",
+        "AdGroupType",
+        "AdId",
+        "AdLabels",
+        "AdRelevance",
+        "AdStatus",
+        "AdTitle",
+        "AdType",
+        "AgeGroup",
+        "AreaCode",
+        "AssetGroupId",
+        "AssetGroupName",
+        "AssetGroupStatus",
+        "AssociationId",
+        "AssociationLevel",
+        "AssociationStatus",
+        "AttributeChanged",
+        "AudienceId",
+        "AudienceName",
+        "BaseCampaignId",
+        "BidAdjustment",
+        "BidMatchType",
+        "BidStrategyType",
+        "BudgetAssociationStatus",
+        "BudgetName",
+        "BudgetStatus",
+        "Business",
+        "CampaignId",
+        "CampaignLabels",
+        "CampaignName",
+        "CampaignStatus",
+        "CampaignType",
+        "Category0",
+        "Category1",
+        "Category2",
+        "CategoryList",
+        "ChangedBy",
+        "City",
+        "ClickType",
+        "ClickTypeId",
+        "CombinationLongHeadline",
+        "CompanyName",
+        "ConflictLevel",
+        "ConflictType",
+        "Country",
+        "County",
+        "CountryOfSale",
+        "CurrentMaxCpc",
+        "CurrencyCode",
+        "CustomerId",
+        "CustomerName",
+        "CustomLabel0",
+        "CustomLabel1",
+        "CustomLabel2",
+        "CustomLabel3",
+        "CustomLabel4",
+        "CustomParameters",
+        "Date",
+        "DateTime",
+        "DeliveredMatchType",
+        "Description1",
+        "Description2",
+        "DestinationUrl",
+        "DeviceOS",
+        "DeviceType",
+        "DisplayUrl",
+        "DynamicAdTarget",
+        "DynamicAdTargetId",
+        "DynamicAdTargetStatus",
+        "EndTime",
+        "EntityId",
+        "EntityName",
+        "ExpectedCtr",
+        "FeedUrl",
+        "FinalAppUrl",
+        "FinalMobileUrl",
+        "FinalUrl",
+        "FinalUrlSuffix",
+        "Gender",
+        "Goal",
+        "GoalId",
+        "GoalType",
+        "GTIN",
+        "Headline",
+        "Headline1",
+        "Headline2",
+        "Headline3",
+        "HistoricalAdRelevance",
+        "HistoricalExpectedCtr",
+        "HistoricalLandingPageExperience",
+        "HistoricalQualityScore",
+        "HowChanged",
+        "Image",
+        "IndustryName",
+        "ItemChanged",
+        "JobFunctionName",
+        "Keyword",
+        "KeywordId",
+        "KeywordLabels",
+        "KeywordStatus",
+        "LandingPageTitle",
+        "LandingPageExperience",
+        "Language",
+        "LocationId",
+        "LocationType",
+        "LocalStoreCode",
+        "Logo",
+        "LongHeadline",
+        "MetroArea",
+        "MerchantProductId",
+        "MostSpecificLocation",
+        "MPN",
+        "NegativeKeyword",
+        "NegativeKeywordId",
+        "NegativeKeywordList",
+        "NegativeKeywordListId",
+        "NegativeKeywordMatchType",
+        "Network",
+        "NewValue",
+        "OfferLanguage",
+        "OldValue",
+        "Param1",
+        "Param2",
+        "Param3",
+        "PartitionType",
+        "Path1",
+        "Path2",
+        "PostalCode",
+        "PricingModel",
+        "ProductBought",
+        "ProductBoughtTitle",
+        "ProductCategory1",
+        "ProductCategory2",
+        "ProductCategory3",
+        "ProductCategory4",
+        "ProductCategory5",
+        "ProductGroup",
+        "ProductType1",
+        "ProductType2",
+        "ProductType3",
+        "ProductType4",
+        "ProductType5",
+        "ProximityTargetLocation",
+        "PublisherUrl",
+        "QualityImpact",
+        "QualityScore",
+        "QueryIntentCity",
+        "QueryIntentCountry",
+        "QueryIntentCounty",
+        "QueryIntentDMA",
+        "QueryIntentLocationId",
+        "QueryIntentPostalCode",
+        "QueryIntentState",
+        "Radius",
+        "RevenuePerAppInstall",
+        "RevenuePerDownload",
+        "Status",
+        "SearchQuery",
+        "SellerName",
+        "StartTime",
+        "State",
+        "TargetingSetting",
+        "TimePeriod",
+        "TitlePart1",
+        "TitlePart2",
+        "TitlePart3",
+        "TopVsOther",
+        "TotalClicksOnAdElements",
+        "TrackingTemplate",
+        "ViewThroughCostPerConversion",
+        "ViewThroughConversionRate",
+        "WebsiteCoverage",
+    }
+)
+
 
 class _AccountInfoStream(BingAdsStream):
     name = "_account_info"
@@ -569,13 +761,23 @@ class KeywordStream(_BulkStream):
 
 class _DailyPerformanceReportStream(BingAdsStream):
     parent_stream_type = _AccountInfoStream
-    primary_keys = ("TimePeriod",)
     replication_key = "TimePeriod"
     is_timestamp_replication_key = True
     state_partitioning_keys = ()
 
     report_request_name: str = ...
     column_restrictions: tuple[tuple[set[str], set[str]], ...] = ()
+
+    @override
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self.primary_keys = ("TimePeriod",)  # for automatic metadata inclusion
+
+        # https://learn.microsoft.com/en-us/advertising/guides/reports?view=bingads-13#columnsdata
+        self.primary_keys = tuple(
+            c for c in self.columns if c in REPORT_ATTRIBUTE_COLUMNS
+        )
 
     @override
     def get_records(self, context):
@@ -904,11 +1106,6 @@ class AdGroupDailyPerformanceStream(_DailyPerformanceReportStream):
         ),
     )
 
-    @override
-    @cached_property
-    def primary_keys(self):
-        return (*super().primary_keys, "AdGroupId")
-
 
 class AdDailyPerformanceStream(_DailyPerformanceReportStream):
     """Define ad daily performance stream."""
@@ -1013,11 +1210,6 @@ class AdDailyPerformanceStream(_DailyPerformanceReportStream):
     # https://learn.microsoft.com/en-us/advertising/reporting-service/adperformancereportrequest?view=bingads-13&tabs=json
     report_request_name = "AdPerformanceReportRequest"
 
-    @override
-    @cached_property
-    def primary_keys(self):
-        return (*super().primary_keys, "AdId")
-
 
 class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
     """Define kewword daily performance stream."""
@@ -1109,8 +1301,3 @@ class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
 
     # https://learn.microsoft.com/en-us/advertising/reporting-service/keywordperformancereportrequest?view=bingads-13&tabs=json
     report_request_name = "KeywordPerformanceReportRequest"
-
-    @override
-    @cached_property
-    def primary_keys(self):
-        return (*super().primary_keys, "KeywordId")
