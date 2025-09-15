@@ -59,7 +59,7 @@ class TapBingAds(Tap):
             "customer_id",
             th.StringType,
             title="Customer ID",
-            description="ID of customers to extract data for",
+            description="ID of customer to extract data for",
         ),
         th.Property(
             "account_ids",
