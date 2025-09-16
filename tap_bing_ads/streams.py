@@ -769,23 +769,17 @@ class KeywordStream(_BulkStream):
 
 class _DailyPerformanceReportStream(BingAdsStream):
     parent_stream_type = _AccountInfoStream
+
+    # important this is left empty to automatically resolve relevant primary keys when
+    # processing catalog
+    primary_keys = ()
+
     replication_key = "TimePeriod"
     is_timestamp_replication_key = True
     state_partitioning_keys = ()
 
     report_request_name: str = ...
     column_restrictions: tuple[tuple[set[str], set[str]], ...] = ()
-
-    @override
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        self.primary_keys = ("TimePeriod",)  # for automatic metadata inclusion
-
-        # https://learn.microsoft.com/en-us/advertising/guides/reports?view=bingads-13#columnsdata
-        self.primary_keys = tuple(
-            c for c in self.columns if c in REPORT_ATTRIBUTE_COLUMNS
-        )
 
     @override
     def get_records(self, context):

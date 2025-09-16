@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import cached_property
 
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
+from singer_sdk.singerlib.catalog import Metadata
 from typing_extensions import override
 
 from tap_bing_ads import streams
@@ -85,6 +87,47 @@ class TapBingAds(Tap):
             ),
         ),
     ).to_dict()
+
+    @override
+    @cached_property
+    def catalog(self):
+        catalog = super().catalog
+
+        for stream in self.streams.values():
+            if not isinstance(stream, streams._DailyPerformanceReportStream):  # noqa: SLF001
+                continue
+
+            if not (entry := catalog.get(stream.name)):
+                continue
+
+            if entry.key_properties:
+                continue
+
+            # resolve key properties from selected attribute columns
+            entry.key_properties = []
+
+            for p in entry.schema.properties:
+                if p not in streams.REPORT_ATTRIBUTE_COLUMNS:
+                    continue
+
+                metadata = entry.metadata[("properties", p)]
+
+                if (
+                    metadata.inclusion == Metadata.InclusionType.AUTOMATIC
+                    or metadata.selected
+                ):
+                    entry.key_properties.append(p)
+
+            self.logger.info(
+                (
+                    "Automatically resolved key properties for stream '%s' from "
+                    "selected attribute columns: %s"
+                ),
+                stream.name,
+                entry.key_properties,
+            )
+
+        return catalog
 
     @override
     def discover_streams(self):
