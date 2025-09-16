@@ -434,6 +434,15 @@ class _BulkStream(BingAdsStream):
         return super().post_process(row, context)
 
     @override
+    def to_date_isoformat(self, value):
+        return (
+            datetime.strptime(value, r"%m/%d/%Y")
+            .astimezone(timezone.utc)
+            .date()
+            .isoformat()
+        )
+
+    @override
     def to_datetime_isoformat(self, value):
         return (
             datetime.strptime(value, r"%m/%d/%Y %H:%M:%S.%f")

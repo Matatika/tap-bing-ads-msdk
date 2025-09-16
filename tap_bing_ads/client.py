@@ -145,6 +145,11 @@ class BingAdsStream(RESTStream):
         return self._property_breadcrumbs_of_type("boolean")
 
     @cached_property
+    def date_property_breadcrumbs(self):
+        """Breadcrumbs of date properties."""
+        return self._property_breadcrumbs(lambda _, v: v.get("format") == "date")
+
+    @cached_property
     def datetime_property_breadcrumbs(self):
         """Breadcrumbs of date-time properties."""
         return self._property_breadcrumbs(lambda _, v: v.get("format") == "date-time")
@@ -188,6 +193,10 @@ class BingAdsStream(RESTStream):
         """Convert a string value into a float."""
         return float(value)
 
+    def to_date_isoformat(self, value: str):
+        """Convert a string value into a date ISO8601 format string."""
+        return value
+
     def to_datetime_isoformat(self, value: str):
         """Convert a string value into a date-time ISO8601 format string."""
         return value
@@ -219,6 +228,9 @@ class BingAdsStream(RESTStream):
 
         if breadcrumb in self.boolean_property_breadcrumbs:
             return value.lower() == "true"
+
+        if breadcrumb in self.date_property_breadcrumbs:
+            return self.to_date_isoformat(value)
 
         if breadcrumb in self.datetime_property_breadcrumbs:
             return self.to_datetime_isoformat(value)
