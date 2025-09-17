@@ -218,7 +218,7 @@ class BingAdsStream(RESTStream):
             return value
 
         if value == "":
-            return None
+            return value if "__".join(breadcrumb) in self.primary_keys else None
 
         if breadcrumb in self.integer_property_breadcrumbs:
             return int(value)
