@@ -100,6 +100,9 @@ class TapBingAds(Tap):
 
             # resolve primary keys from selected attribute columns
             stream.primary_keys = self._filter_selected_column_attribute_properties(
+                # `Stream.primary_keys` set from from input catalog if provided - see
+                # `Stream.apply_catalog` and `Tap.streams
+                # otherwise construct from schema
                 stream.primary_keys or stream.schema["properties"],
                 stream.metadata,
             )
@@ -124,6 +127,11 @@ class TapBingAds(Tap):
             if not (stream := self.streams.get(tap_stream_id)):
                 continue
 
+            # primary key filtering happens at the stream level with respect to the
+            # input catalog, so we need to reassign key properties here before passing
+            # to setup mapper when we have stream aliases defined in config (otherwise,
+            # this results in the error `singer_sdk.exceptions.StreamMapConfigError:
+            # Invalid key properties for ...`)
             entry.key_properties = stream.primary_keys
 
         return catalog
