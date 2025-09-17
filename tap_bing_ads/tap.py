@@ -90,38 +90,35 @@ class TapBingAds(Tap):
 
     @override
     @cached_property
-    def catalog(self):
-        catalog = super().catalog
+    def streams(self):
+        streams_ = super().streams
 
-        for stream in self.streams.values():
+        for stream in streams_.values():
             if not isinstance(stream, streams._DailyPerformanceReportStream):  # noqa: SLF001
                 continue
 
-            if not (entry := catalog.get(stream.name)):
+            if stream.primary_keys:
                 continue
 
-            if entry.key_properties:
-                continue
-
-            # resolve key properties from selected attribute columns
-            entry.key_properties = [
+            # resolve primary keys from selected attribute columns
+            stream.primary_keys = [
                 p
-                for p in entry.schema.properties
+                for p in stream.schema["properties"]
                 if p in streams.REPORT_ATTRIBUTE_COLUMNS
-                if (m := entry.metadata[("properties", p)]).selected is not False
+                if (m := stream.metadata[("properties", p)]).selected is not False
                 or m.inclusion == Metadata.InclusionType.AUTOMATIC
             ]
 
             self.logger.info(
                 (
-                    "Automatically resolved key properties for stream '%s' from "
-                    "selected attribute columns: %s"
+                    "Automatically resolved primary keys for stream '%s' from selected "
+                    "attribute columns: %s"
                 ),
                 stream.name,
-                entry.key_properties,
+                stream.primary_keys,
             )
 
-        return catalog
+        return streams_
 
     @override
     def discover_streams(self):
