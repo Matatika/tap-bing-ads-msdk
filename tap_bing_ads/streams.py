@@ -14,6 +14,7 @@ from functools import cached_property
 from pathlib import Path
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
+from singer_sdk.singerlib.catalog import Metadata
 from singer_sdk.streams import Stream
 from typing_extensions import override
 
@@ -928,7 +929,8 @@ class _DailyPerformanceReportStream(BingAdsStream):
         column_names = {
             p
             for p in self.schema["properties"]
-            if self.metadata[("properties", p)].selected is not False
+            if (m := self.metadata[("properties", p)]).selected is not False
+            or m.inclusion == Metadata.InclusionType.AUTOMATIC
         }
 
         # resolve restricted column combinations
