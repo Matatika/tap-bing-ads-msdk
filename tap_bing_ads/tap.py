@@ -121,6 +121,27 @@ class TapBingAds(Tap):
         return streams_
 
     @override
+    @cached_property
+    def catalog(self):
+        catalog = super().catalog
+
+        for stream in self.streams.values():
+            if not isinstance(stream, streams._DailyPerformanceReportStream):  # noqa: SLF001
+                continue
+
+            if not (entry := catalog.get(stream.name)):
+                continue
+
+            entry.key_properties = [
+                p
+                for p in entry.key_properties
+                if (m := stream.metadata[("properties", p)]).selected is not False
+                or m.inclusion == Metadata.InclusionType.AUTOMATIC
+            ]
+
+        return catalog
+
+    @override
     def discover_streams(self):
         return [stream_cls(tap=self) for stream_cls in STREAM_TYPES]
 
