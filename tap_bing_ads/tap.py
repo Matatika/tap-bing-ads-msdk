@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import typing as t
 from datetime import datetime, timedelta, timezone
 from functools import cached_property
 
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
-from singer_sdk.singerlib.catalog import Metadata
+from singer_sdk.singerlib.catalog import Metadata, MetadataMapping
 from typing_extensions import override
 
 from tap_bing_ads import streams
@@ -97,17 +98,11 @@ class TapBingAds(Tap):
             if not isinstance(stream, streams._DailyPerformanceReportStream):  # noqa: SLF001
                 continue
 
-            if stream.primary_keys:
-                continue
-
             # resolve primary keys from selected attribute columns
-            stream.primary_keys = [
-                p
-                for p in stream.schema["properties"]
-                if p in streams.REPORT_ATTRIBUTE_COLUMNS
-                if (m := stream.metadata[("properties", p)]).selected is not False
-                or m.inclusion == Metadata.InclusionType.AUTOMATIC
-            ]
+            stream.primary_keys = self._filter_selected_column_attribute_properties(
+                stream.primary_keys or stream.schema["properties"],
+                stream.metadata,
+            )
 
             self.logger.info(
                 (
@@ -125,25 +120,30 @@ class TapBingAds(Tap):
     def catalog(self):
         catalog = super().catalog
 
-        for stream in self.streams.values():
-            if not isinstance(stream, streams._DailyPerformanceReportStream):  # noqa: SLF001
+        for tap_stream_id, entry in catalog.items():
+            if not (stream := self.streams.get(tap_stream_id)):
                 continue
 
-            if not (entry := catalog.get(stream.name)):
-                continue
-
-            entry.key_properties = [
-                p
-                for p in entry.key_properties
-                if (m := stream.metadata[("properties", p)]).selected is not False
-                or m.inclusion == Metadata.InclusionType.AUTOMATIC
-            ]
+            entry.key_properties = stream.primary_keys
 
         return catalog
 
     @override
     def discover_streams(self):
         return [stream_cls(tap=self) for stream_cls in STREAM_TYPES]
+
+    @staticmethod
+    def _filter_selected_column_attribute_properties(
+        properties: t.Iterable[str],
+        metadata: MetadataMapping,
+    ) -> list[str]:
+        return [
+            p
+            for p in properties
+            if p in streams.REPORT_ATTRIBUTE_COLUMNS
+            if (m := metadata[("properties", p)]).selected is not False
+            or m.inclusion == Metadata.InclusionType.AUTOMATIC
+        ]
 
 
 if __name__ == "__main__":
