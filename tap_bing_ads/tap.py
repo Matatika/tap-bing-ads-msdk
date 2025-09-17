@@ -104,19 +104,13 @@ class TapBingAds(Tap):
                 continue
 
             # resolve key properties from selected attribute columns
-            entry.key_properties = []
-
-            for p in entry.schema.properties:
-                if p not in streams.REPORT_ATTRIBUTE_COLUMNS:
-                    continue
-
-                metadata = entry.metadata[("properties", p)]
-
-                if (
-                    metadata.inclusion == Metadata.InclusionType.AUTOMATIC
-                    or metadata.selected
-                ):
-                    entry.key_properties.append(p)
+            entry.key_properties = [
+                p
+                for p in entry.schema.properties
+                if p in streams.REPORT_ATTRIBUTE_COLUMNS
+                if (m := entry.metadata[("properties", p)]).selected is not False
+                or m.inclusion == Metadata.InclusionType.AUTOMATIC
+            ]
 
             self.logger.info(
                 (
