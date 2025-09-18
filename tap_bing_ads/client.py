@@ -189,7 +189,7 @@ class BingAdsStream(RESTStream):
     def _property_breadcrumbs_of_type(self, type_: str):
         return self._property_breadcrumbs(lambda _, v: type_ in v["type"])
 
-    def to_float(self, value: str):
+    def to_float(self, value: str) -> float | None:
         """Convert a string value into a float."""
         return float(value)
 
@@ -224,7 +224,12 @@ class BingAdsStream(RESTStream):
             return int(value)
 
         if breadcrumb in self.number_property_breadcrumbs:
-            return self.to_float(value)
+            value = self.to_float(value)
+            return (
+                0.0
+                if value is None and "__".join(breadcrumb) in self.primary_keys
+                else value
+            )
 
         if breadcrumb in self.boolean_property_breadcrumbs:
             return value.lower() == "true"
