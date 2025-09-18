@@ -1016,7 +1016,7 @@ class AdGroupDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("Goal", th.StringType),
         th.Property("GoalId", th.IntegerType),
         th.Property("GoalType", th.StringType),
-        th.Property("HistoricalAdRelevance", th.StringType),
+        th.Property("HistoricalAdRelevance", th.NumberType),
         th.Property("HistoricalExpectedCtr", th.NumberType),
         th.Property("HistoricalLandingPageExperience", th.NumberType),
         th.Property("HistoricalQualityScore", th.NumberType),
