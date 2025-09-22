@@ -672,6 +672,7 @@ class AdStream(_BulkStream):
 
     name = "ads"
     schema = th.PropertiesList(
+        th.Property("Type", th.StringType),  # specific ad type
         th.Property("Ad Format Preference", th.StringType),
         th.Property("Ad Group", th.StringType),
         th.Property("App Id", th.IntegerType),
