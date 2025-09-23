@@ -378,6 +378,10 @@ class _BulkStream(BingAdsStream):
 
         return http_headers
 
+    @cached_property
+    def related_entity_type_pattern(self):
+        return self.entity_type_pattern + "*"
+
     @override
     def get_records(self, context):
         account_id = context["account_id"]
@@ -411,9 +415,14 @@ class _BulkStream(BingAdsStream):
             is_matching_entity_type = False
 
             for row in reader:
-                if fnmatch.fnmatch(row["Type"], self.entity_type_pattern):
+                if fnmatch.fnmatch(row["Type"], self.related_entity_type_pattern):
                     is_matching_entity_type = True
-                    yield row
+
+                    # some entity types have corresponding sub-types (e.g. `Error`) that
+                    # we want to skip
+                    if fnmatch.fnmatch(row["Type"], self.entity_type_pattern):
+                        yield row
+
                     continue
 
                 if is_matching_entity_type:
