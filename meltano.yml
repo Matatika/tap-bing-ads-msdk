@@ -39,6 +39,7 @@ plugins:
       sensitive: true
 
     - name: customer_id
+      kind: integer
       label: Customer ID
       description: ID of customer to extract data for
 
