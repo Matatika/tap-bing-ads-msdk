@@ -1317,3 +1317,36 @@ class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
 
     # https://learn.microsoft.com/en-us/advertising/reporting-service/keywordperformancereportrequest?view=bingads-13&tabs=json
     report_request_name = "KeywordPerformanceReportRequest"
+
+class AssetDailyPerformanceStream(_DailyPerformanceReportStream):
+    """Define asset daily performance stream."""
+
+    name = "asset_daily_performance"
+
+    schema = th.PropertiesList(
+        th.Property("AssetId", th.IntegerType),
+        th.Property("AccountId", th.IntegerType),
+        th.Property("AccountName", th.StringType),
+        th.Property("AssetType", th.StringType),
+        th.Property("AssetSource", th.StringType),
+        th.Property("Impressions", th.IntegerType),
+        th.Property("Clicks", th.IntegerType),
+        th.Property("Spend", th.NumberType),
+        th.Property("Conversions", th.NumberType),
+        th.Property("TimePeriod", th.DateType),
+        th.Property("CampaignId", th.IntegerType),
+        th.Property("CampaignName", th.StringType),
+        th.Property("AdGroupId", th.IntegerType),
+        th.Property("AdGroupName", th.StringType),
+        th.Property("CompletedVideoViews", th.IntegerType),
+        th.Property("Ctr", th.NumberType),
+        th.Property("Revenue", th.NumberType),
+        th.Property("VideoCompletionRate", th.NumberType),
+        th.Property("VideoViews", th.IntegerType),
+        th.Property("VideoViewsAt25Percent", th.IntegerType),
+        th.Property("VideoViewsAt50Percent", th.IntegerType),
+        th.Property("VideoViewsAt75Percent", th.IntegerType),
+    ).to_dict()
+
+    # https://learn.microsoft.com/en-us/advertising/reporting-service/assetperformancereportrequest?view=bingads-13&tabs=json
+    report_request_name = "AssetPerformanceReportRequest"
