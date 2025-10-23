@@ -51,7 +51,7 @@ REPORT_ATTRIBUTE_COLUMNS = frozenset(
         "AdType",
         "AgeGroup",
         "AreaCode",
-        "AssetId"
+        "AssetId",
         "AssetGroupId",
         "AssetGroupName",
         "AssetGroupStatus",
