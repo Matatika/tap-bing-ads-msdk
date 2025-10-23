@@ -1329,6 +1329,7 @@ class AssetDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("AccountName", th.StringType),
         th.Property("AssetType", th.StringType),
         th.Property("AssetSource", th.StringType),
+        th.Property("AssetContent", th.StringType),
         th.Property("Impressions", th.IntegerType),
         th.Property("Clicks", th.IntegerType),
         th.Property("Spend", th.NumberType),
