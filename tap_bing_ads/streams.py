@@ -276,6 +276,7 @@ class _AccountContextStream(Stream):
     name = "_account_context"
     selected = False
     schema = th.PropertiesList().to_dict()
+    state_partitioning_keys = ()
 
     @override
     def get_records(self, context):
