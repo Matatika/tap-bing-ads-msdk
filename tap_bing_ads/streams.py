@@ -1323,6 +1323,7 @@ class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
     # https://learn.microsoft.com/en-us/advertising/reporting-service/keywordperformancereportrequest?view=bingads-13&tabs=json
     report_request_name = "KeywordPerformanceReportRequest"
 
+
 class AssetDailyPerformanceStream(_DailyPerformanceReportStream):
     """Define asset daily performance stream."""
 
