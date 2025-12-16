@@ -931,6 +931,7 @@ class _DailyPerformanceReportStream(BingAdsStream):
     @override
     def to_float(self, value):
         # "--" if score not computed
+        # https://learn.microsoft.com/en-us/advertising/guides/migration-guide?view=bingads-13#reporting-score-unavailable
         # https://learn.microsoft.com/en-us/advertising/guides/report-attributes-performance-statistics?view=bingads-13#attributes
         if value == "--":
             return None
