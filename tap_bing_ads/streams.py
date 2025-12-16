@@ -1233,7 +1233,7 @@ class AdDailyPerformanceStream(_DailyPerformanceReportStream):
 
 
 class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
-    """Define kewword daily performance stream."""
+    """Define keyword daily performance stream."""
 
     name = "keyword_daily_performance"
 
