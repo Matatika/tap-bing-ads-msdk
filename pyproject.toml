@@ -21,7 +21,7 @@ classifiers = [
 license-files = [ "LICENSE" ]
 requires-python = ">=3.9"
 dependencies = [
-    "singer-sdk~=0.48.1",
+    "singer-sdk~=0.53.4",
     "requests~=2.32.3",
 ]
 
