@@ -44,7 +44,7 @@ test = [
 ]
 typing = [
     "mypy>=1.19.1",
-    "ty>=0.0.12",
+    "ty>=0.0.13",
     "types-requests",
 ]
 
