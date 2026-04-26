@@ -1078,7 +1078,7 @@ class AdGroupDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("VideoViewsAt50Percent", th.IntegerType),
         th.Property("VideoViewsAt75Percent", th.IntegerType),
         th.Property("ViewThroughConversions", th.IntegerType),
-        th.Property("ViewThroughConversionsQualified", th.IntegerType),
+        th.Property("ViewThroughConversionsQualified", th.NumberType),
         th.Property("ViewThroughRate", th.NumberType),
         th.Property("ViewThroughRevenue", th.NumberType),
     ).to_dict()
@@ -1230,7 +1230,7 @@ class AdDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("VideoViewsAt50Percent", th.IntegerType),
         th.Property("VideoViewsAt75Percent", th.IntegerType),
         th.Property("ViewThroughConversions", th.IntegerType),
-        th.Property("ViewThroughConversionsQualified", th.IntegerType),
+        th.Property("ViewThroughConversionsQualified", th.NumberType),
         th.Property("ViewThroughRate", th.NumberType),
         th.Property("ViewThroughRevenue", th.NumberType),
     ).to_dict()
@@ -1323,7 +1323,7 @@ class KeywordDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("TopVsOther", th.StringType),
         th.Property("TrackingTemplate", th.StringType),
         th.Property("ViewThroughConversions", th.IntegerType),
-        th.Property("ViewThroughConversionsQualified", th.IntegerType),
+        th.Property("ViewThroughConversionsQualified", th.NumberType),
         th.Property("ViewThroughRevenue", th.NumberType),
     ).to_dict()
 
@@ -1441,7 +1441,7 @@ class PublisherUsageDailyPerformanceStream(_DailyPerformanceReportStream):
         th.Property("TopImpressionRatePercent", th.NumberType),
         th.Property("TopVsOther", th.StringType),
         th.Property("ViewThroughConversions", th.IntegerType),
-        th.Property("ViewThroughConversionsQualified", th.IntegerType),
+        th.Property("ViewThroughConversionsQualified", th.NumberType),
         th.Property("ViewThroughRevenue", th.NumberType),
     ).to_dict()
 
