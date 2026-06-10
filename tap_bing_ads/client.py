@@ -220,6 +220,8 @@ class BingAdsStream(RESTStream):
         if value == "":
             if breadcrumb in self.integer_property_breadcrumbs:
                 value = 0
+            elif breadcrumb in self.number_property_breadcrumbs:
+                value = 0.0
 
             return value if "__".join(breadcrumb) in self.primary_keys else None
 
