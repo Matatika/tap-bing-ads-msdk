@@ -42,8 +42,8 @@ test = [
     "singer-sdk[testing]",
 ]
 typing = [
-    "mypy>=1.19.1",
-    "ty>=0.0.65",
+    "mypy>=2.3.0",
+    "ty>=0.0.69",
     "types-requests",
 ]
 
