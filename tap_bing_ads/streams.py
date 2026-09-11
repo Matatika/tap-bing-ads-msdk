@@ -787,6 +787,31 @@ class KeywordStream(_BulkStream):
     entity_type_pattern = "Keyword"
 
 
+class CampaignNegativeSiteStream(_BulkStream):
+    """Define campaign negative site (website exclusion) stream.
+
+    Unlike other bulk entities, a negative site has no `Id` of its own - each row is a
+    (campaign, website) pair, so that combination is used as the primary key instead.
+
+    https://learn.microsoft.com/en-us/advertising/bulk-service/campaign-negative-site?view=bingads-13
+    """
+
+    name = "campaign_negative_sites"
+    primary_keys = ("Parent Id", "Website")
+
+    schema = th.PropertiesList(
+        th.Property("Campaign", th.StringType),
+        th.Property("Client Id", th.StringType),
+        th.Property("Modified Time", th.DateTimeType),
+        th.Property("Parent Id", th.IntegerType),
+        th.Property("Status", th.StringType),
+        th.Property("Website", th.StringType),
+    ).to_dict()
+
+    download_entity_name = "CampaignNegativeSites"
+    entity_type_pattern = "Campaign Negative Site"
+
+
 class _DailyPerformanceReportStream(BingAdsStream):
     parent_stream_type = _AccountInfoStream
 
