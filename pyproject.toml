@@ -43,7 +43,7 @@ test = [
 ]
 typing = [
     "mypy>=2.3.1",
-    "ty>=0.0.82",
+    "ty>=0.0.84",
     "types-requests",
 ]
 
@@ -74,7 +74,7 @@ convention = "google"
 
 [build-system]
 requires = [
-    "hatchling>=1.32.3,<2",
+    "hatchling>=1.32.4,<2",
 ]
 build-backend = "hatchling.build"
 
